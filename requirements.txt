@@ -11,3 +11,4 @@ scikit-learn
 jraph
 wandb
 python-igraph
+matplotlib

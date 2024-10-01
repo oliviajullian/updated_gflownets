@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -18,19 +19,14 @@ from dag_gflownet.utils.data import load_artifact_continuous
 
 
 def main(args):
-    api = wandb.Api()
+   # api = wandb.Api()
 
     rng = default_rng(args.seed)
     key = jax.random.PRNGKey(args.seed)
     key, subkey = jax.random.split(key)
 
     # Get the artifact from wandb
-    artifact = api.artifact(args.artifact)
-    artifact_dir = Path(artifact.download()) / f'{args.seed:02d}'
-
-    if args.seed not in artifact.metadata['seeds']:
-        raise ValueError(f'The seed `{args.seed}` is not in the list of seeds '
-            f'for artifact `{args.artifact}`: {artifact.metadata["seeds"]}')
+    artifact_dir = args.artifact
 
     # Load data & graph
     train, valid, graph = load_artifact_continuous(artifact_dir)
@@ -50,14 +46,14 @@ def main(args):
     )
 
     # Create the model
-    if 'obs_noise' not in artifact.metadata['cpd_kwargs']:
-        if args.obs_scale is None:
-            raise ValueError('The obs_noise is not defined in the artifact, '
-                'therefore is must be set as a command argument `--obs_scale`.')
-        obs_scale = args.obs_scale
-    else:
-        obs_scale = artifact.metadata['cpd_kwargs']['obs_noise']
-    prior_graph = get_model_prior(args.prior, artifact.metadata, args)
+    if args.obs_scale is None:
+        raise ValueError('The obs_noise is not defined in the artifact, '
+            'therefore is must be set as a command argument `--obs_scale`.')
+    obs_scale = args.obs_scale
+    #args for the creation of the graph
+    metadata = {"num_variables":args.num_variables,"num_edges_per_node":args.num_edges_per_node}
+
+    prior_graph = get_model_prior(args.prior, metadata, args)
     model = get_model(args.model, prior_graph, train_jnp, obs_scale)
 
     # Create the GFlowNet & initialize parameters
@@ -126,6 +122,25 @@ def main(args):
         desc='Sampling from posterior'
     )
 
+    #print the resulted maps
+    pred_1=posterior[0]
+    real_dag = np.load(f"{artifact_dir}/DAG.npy")
+    display_matrices(pred_1, real_dag,artifact_dir)
+
+
+# Function to display matrices using black and white
+def display_matrices(mat1, mat2,dir):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
+
+    # Show first matrix
+    ax1.imshow(mat1, cmap='gray', vmin=0, vmax=1)
+    ax1.set_title("pred")
+
+    # Show second matrix
+    ax2.imshow(mat2, cmap='gray', vmin=0, vmax=1)
+    ax2.set_title("real")
+    plt.savefig(f"{dir}/prediction_dag.png")
+    plt.show()
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
@@ -136,13 +151,17 @@ if __name__ == '__main__':
 
     # Environment
     environment = parser.add_argument_group('Environment')
-    environment.add_argument('--num_envs', type=int, default=8,
+    environment.add_argument('--num_envs', type=int, default=1,
         help='Number of parallel environments (default: %(default)s)')
     environment.add_argument('--prior', type=str, default='uniform',
         choices=['uniform', 'erdos_renyi', 'edge', 'fair'],
         help='Prior over graphs (default: %(default)s)')
     environment.add_argument('--max_parents', type=int, default=None,
         help='Maximum number of parents')
+    environment.add_argument('--num_variables', type=int, default=6,
+        help='Number of variables')
+    environment.add_argument('--num_edges_per_node', type=int, default=6,
+        help='Number of edges_per_node')
 
     # Data
     data = parser.add_argument_group('Data')
@@ -165,7 +184,7 @@ if __name__ == '__main__':
         help='Value of delta for Huber loss (default: %(default)s)')
     optimization.add_argument('--batch_size', type=int, default=32,
         help='Batch size (default: %(default)s)')
-    optimization.add_argument('--num_iterations', type=int, default=100_000,
+    optimization.add_argument('--num_iterations', type=int, default=10,
         help='Number of iterations (default: %(default)s)')
     optimization.add_argument('--params_num_samples', type=int, default=1,
         help='Number of samples of model parameters to compute the loss (default: %(default)s)')

@@ -37,7 +37,7 @@ class GFlowNetDAGEnv(gym.vector.VectorEnv):
             'adjacency': Box(low=0., high=1., shape=shape, dtype=np.int_),
             'mask': Box(low=0., high=1., shape=shape, dtype=np.int_),
             'num_edges': Discrete(max_edges),
-            'score': Box(low=-np.inf, high=np.inf, shape=(), dtype=np.float_),
+            'score': Box(low=-np.inf, high=np.inf, shape=(), dtype=np.float64),
             'order': Box(low=-1, high=max_edges, shape=shape, dtype=np.int_)
         })
         action_space = Discrete(self.num_variables ** 2 + 1)
@@ -51,7 +51,7 @@ class GFlowNetDAGEnv(gym.vector.VectorEnv):
             'adjacency': np.zeros(shape, dtype=np.int_),
             'mask': 1 - self._closure_T,
             'num_edges': np.zeros((self.num_envs,), dtype=np.int_),
-            'score': np.zeros((self.num_envs,), dtype=np.float_),
+            'score': np.zeros((self.num_envs,), dtype=np.float64),
             'order': np.full(shape, -1, dtype=np.int_)
         }
         return deepcopy(self._state)
@@ -92,7 +92,7 @@ class GFlowNetDAGEnv(gym.vector.VectorEnv):
         self._state['num_edges'] += 1
         self._state['num_edges'][dones] = 0
 
-        delta_scores = np.zeros((self.num_envs,), dtype=np.float_)
+        delta_scores = np.zeros((self.num_envs,), dtype=np.float64)
 
         # Update the scores. The scores returned by the environments are scores
         # relative to the empty graph: score(G) - score(G_0).
