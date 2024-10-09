@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import optax
 import jax
+import gc
 
 from functools import partial
 from collections import namedtuple
@@ -166,25 +167,27 @@ class DAGGFlowNet:
 
     @partial(jit, static_argnums=(0,))
     def step(self, params, state, samples, dataset, normalization):
+        # Unpack parameters to avoid passing entire object
+        online_params = params.online
+        target_params = params.target
         key, subkey = random.split(state.key)
-        grads, logs = grad(self.loss, has_aux=True)(params.online, params.target, subkey, samples, dataset, normalization)
+        grads, logs = grad(self.loss, has_aux=True)(online_params, target_params, subkey, samples, dataset, normalization)
 
         # Update the online params
-        updates, opt_state = self.optimizer.update(grads, state.optimizer, params.online)
+        updates, opt_state = self.optimizer.update(grads, state.optimizer, online_params)
         state = DAGGFlowNetState(optimizer=opt_state, key=key, steps=state.steps + 1)
-        online_params = optax.apply_updates(params.online, updates)
+        online_params = optax.apply_updates(online_params, updates)
         if self.update_target_every > 0:
             target_params = optax.periodic_update(
                 online_params,
-                params.target,
+                target_params,
                 state.steps,
                 self.update_target_every
             )
-        else:
-            target_params = params.target
         params = DAGGFlowNetParameters(online=online_params, target=target_params)
-
-        return (params, state, logs)
+        # Return a simpler log structure, if necessary
+        logs_to_return = {key: logs[key] for key in logs if key in ['loss', 'other_important_metrics']}
+        return params, state, logs_to_return
 
     def init(self, key, optimizer, graph, mask):
         key, subkey = random.split(key)

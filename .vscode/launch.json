@@ -11,12 +11,27 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": [
-                "--batch_size","256",
-                "--lr", "1e-4",
-                "--params_num_samples", "64",
-                "--model", "mlp_gauss",
-                "--artifact",  "dag_gflownet/data/sim_data"  
+                "--num_envs","1",
+                "--num_variables", "5",
+                "--num_edges_per_node", "5",
+                "--num_edges", "5",
 
+
+
+
+                "--model", "mlp_gauss",
+
+
+                "--lr", "1e-4",
+                "--batch_size","64",
+                "--num_iterations","100",
+                "--params_num_samples", "1000",
+                "--update_target_every","10",
+
+                "--replay_capacity","100_000_000",
+                "--replay_capacity","100000",
+
+                "--out_dir","dag_gflownet/data/results",
             ]
         }
     ]

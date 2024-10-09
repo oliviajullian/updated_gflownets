@@ -129,9 +129,11 @@ dmypy.json
 .pyre/
 
 # Data
-/data/*
+./data/*
 !/data/.gitkeep
 /wandb/
 /artifacts/
 /tmp/
 run.sh
+**.DS_Store
+lauch.json

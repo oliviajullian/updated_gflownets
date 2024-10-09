@@ -1,10 +1,12 @@
 import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import jax.numpy as jnp
 import numpy as np
 import optax
 import jax
-import wandb
-
+import networkx as nx
+import json
+import argparse
 from pathlib import Path
 from tqdm import trange
 from numpy.random import default_rng
@@ -15,27 +17,36 @@ from dag_gflownet.utils.replay_buffer import ReplayBuffer
 from dag_gflownet.utils.factories import get_model, get_model_prior
 from dag_gflownet.utils.gflownet import posterior_estimate
 from dag_gflownet.utils.jraph_utils import to_graphs_tuple
-from dag_gflownet.utils.data import load_artifact_continuous
+from dag_gflownet.utils.data import load_artifact_continuous, get_data
+from dag_gflownet.utils.metrics import expected_shd, expected_edges, threshold_metrics
+
 
 
 def main(args):
-   # api = wandb.Api()
 
     rng = default_rng(args.seed)
     key = jax.random.PRNGKey(args.seed)
     key, subkey = jax.random.split(key)
 
-    # Get the artifact from wandb
-    artifact_dir = args.artifact
+    #for saving results
+    aux_dir = argparse.Namespace(out_dir=Path(args.out_dir))
+    aux_dir.out_dir.mkdir(exist_ok=True)
+
+    # Load or create data & graph
+    train, graph = get_data(args,aux_dir)
+
+    if args.artifact==None:
+        gt_graph = nx.to_numpy_array(graph, weight=None)
+    else:
+        gt_graph = graph.T
 
     # Load data & graph
-    train, valid, graph = load_artifact_continuous(artifact_dir)
     train_jnp = jax.tree_util.tree_map(jnp.asarray, train)
 
     # Create the environment
     env = GFlowNetDAGEnv(
         num_envs=args.num_envs,
-        num_variables=train.data.shape[1],
+        num_variables=args.num_variables,
         max_parents=args.max_parents
     )
 
@@ -110,7 +121,27 @@ def main(args):
                 params, state, logs = gflownet.step(params, state, samples, train_jnp, normalization)
 
                 pbar.set_postfix(loss=f"{logs['loss']:.2f}")
+                # Evaluate the posterior estimate
+                posterior, logs = posterior_estimate(
+                    gflownet,
+                    params.online,
+                    env,
+                    key,
+                    train_jnp,
+                    num_samples=args.num_samples_posterior,
+                    desc='Sampling from posterior'
+                )
+                results = {
+                    'expected_shd': expected_shd(posterior, gt_graph),
+                    'expected_edges': expected_edges(posterior),
+                    **threshold_metrics(posterior, gt_graph)
+                }
+                #print the resulted maps
+                pred_1=posterior
+                display_matrices(pred_1, gt_graph,results,aux_dir.out_dir.joinpath(f"maps/map_for_it_{iteration-args.prefill}.png"))
 
+
+    """
     # Evaluate the posterior estimate
     posterior, logs = posterior_estimate(
         gflownet,
@@ -121,7 +152,22 @@ def main(args):
         num_samples=args.num_samples_posterior,
         desc='Sampling from posterior'
     )
+    """
+    
 
+    results = {
+        'expected_shd': expected_shd(posterior, gt_graph),
+        'expected_edges': expected_edges(posterior),
+        **threshold_metrics(posterior, gt_graph)
+    }
+
+    # Save model data & results
+    io.save(aux_dir.out_dir / 'model.npz', params=params.online)
+    replay.save(aux_dir.out_dir / 'replay_buffer.npz')
+    np.save(aux_dir.out_dir / 'posterior.npy', posterior)
+    with open(aux_dir.out_dir / 'results.json', 'w') as f:
+        json.dump(results, f, default=list)
+    
     #print the resulted maps
     pred_1=posterior[0]
     real_dag = np.load(f"{artifact_dir}/DAG.npy")
@@ -129,12 +175,12 @@ def main(args):
 
 
 # Function to display matrices using black and white
-def display_matrices(mat1, mat2,dir):
+def display_matrices(mat1, mat2,results,dir):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
 
     # Show first matrix
     ax1.imshow(mat1, cmap='gray', vmin=0, vmax=1)
-    ax1.set_title("pred")
+    ax1.set_title(f"pred with SHD:{results['expected_shd']}")
 
     # Show second matrix
     ax2.imshow(mat2, cmap='gray', vmin=0, vmax=1)
@@ -162,19 +208,24 @@ if __name__ == '__main__':
         help='Number of variables')
     environment.add_argument('--num_edges_per_node', type=int, default=6,
         help='Number of edges_per_node')
+    environment.add_argument('--num_edges', type=int, default=6,
+        help='Number of edges_per_node')
 
     # Data
     data = parser.add_argument_group('Data')
-    data.add_argument('--artifact', type=str, required=True,
+    data.add_argument('--artifact', type=str, default=None,
         help='Path to the artifact for input data in Wandb')
     data.add_argument('--obs_scale', type=float, default=math.sqrt(0.1),
         help='Scale of the observation noise (default: %(default)s)')
+    data.add_argument('--num_samples', type=float, default=50000,
+        help='Number of samples in case we create a dataset (default: %(default)s)')
 
     # Model
     model = parser.add_argument_group('Model')
     model.add_argument('--model', type=str, default='lingauss_diag',
         choices=['lingauss_diag', 'lingauss_full', 'mlp_gauss'],
         help='Type of model (default: %(default)s)')
+    
 
     # Optimization
     optimization = parser.add_argument_group('Optimization')
@@ -208,10 +259,16 @@ if __name__ == '__main__':
     
     # Miscellaneous
     misc = parser.add_argument_group('Miscellaneous')
-    misc.add_argument('--num_samples_posterior', type=int, default=1000,
+    misc.add_argument('--num_samples_posterior', type=int, default=1,
         help='Number of samples for the posterior estimate (default: %(default)s)')
     misc.add_argument('--seed', type=int, default=0,
         help='Random seed (default: %(default)s)')
+
+    # Results
+    results = parser.add_argument_group('Results')
+    results.add_argument('--out_dir', type=str, required=True,
+        help='Directory to save the results')
+    
 
     args = parser.parse_args()
 
