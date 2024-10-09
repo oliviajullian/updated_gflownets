@@ -93,7 +93,6 @@ class GFlowNetDAGEnv(gym.vector.VectorEnv):
         self._state['num_edges'][dones] = 0
 
         delta_scores = np.zeros((self.num_envs,), dtype=np.float64)
-
         # Update the scores. The scores returned by the environments are scores
         # relative to the empty graph: score(G) - score(G_0).
         self._state['score'] += delta_scores

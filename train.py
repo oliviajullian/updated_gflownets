@@ -15,7 +15,7 @@ from dag_gflownet.env import GFlowNetDAGEnv
 from dag_gflownet.gflownet import DAGGFlowNet
 from dag_gflownet.utils.replay_buffer import ReplayBuffer
 from dag_gflownet.utils.factories import get_model, get_model_prior
-from dag_gflownet.utils.gflownet import posterior_estimate
+from dag_gflownet.utils.gflownet import posterior_estimate,get_most_likely_graph
 from dag_gflownet.utils.jraph_utils import to_graphs_tuple
 from dag_gflownet.utils.data import load_artifact_continuous, get_data
 from dag_gflownet.utils.metrics import expected_shd, expected_edges, threshold_metrics
@@ -131,14 +131,18 @@ def main(args):
                     num_samples=args.num_samples_posterior,
                     desc='Sampling from posterior'
                 )
-                results = {
-                    'expected_shd': expected_shd(posterior, gt_graph),
-                    'expected_edges': expected_edges(posterior),
-                    **threshold_metrics(posterior, gt_graph)
-                }
-                #print the resulted maps
-                pred_1=posterior
-                display_matrices(pred_1, gt_graph,results,aux_dir.out_dir.joinpath(f"maps/map_for_it_{iteration-args.prefill}.png"))
+                if iteration-args.prefill% 100:
+                    results = {
+                        'expected_shd': expected_shd(posterior, gt_graph),
+                        'expected_edges': expected_edges(posterior),
+                        **threshold_metrics(posterior, gt_graph)
+                    }
+                    print(f"expected_shd: {results['expected_shd']}, expected_edges: {results['expected_edges']}, roc:{results['roc_auc']} ")
+                    #print the resulted maps
+                    pred_1=get_most_likely_graph(posterior)
+                    png_dir = aux_dir.out_dir.joinpath(f"maps/")
+                    png_dir.mkdir(exist_ok=True)
+                    display_matrices(pred_1, gt_graph,results,png_dir.joinpath(f"map_for_it_{iteration-args.prefill}.png"))
 
 
     """
@@ -162,20 +166,14 @@ def main(args):
     }
 
     # Save model data & results
-    io.save(aux_dir.out_dir / 'model.npz', params=params.online)
-    replay.save(aux_dir.out_dir / 'replay_buffer.npz')
+    """io.save(aux_dir.out_dir / 'model.npz', params=params.online)
+    replay.save(aux_dir.out_dir / 'replay_buffer.npz')"""
     np.save(aux_dir.out_dir / 'posterior.npy', posterior)
     with open(aux_dir.out_dir / 'results.json', 'w') as f:
         json.dump(results, f, default=list)
-    
-    #print the resulted maps
-    pred_1=posterior[0]
-    real_dag = np.load(f"{artifact_dir}/DAG.npy")
-    display_matrices(pred_1, real_dag,artifact_dir)
-
 
 # Function to display matrices using black and white
-def display_matrices(mat1, mat2,results,dir):
+def display_matrices(mat1, mat2,results,dir_):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
 
     # Show first matrix
@@ -185,7 +183,7 @@ def display_matrices(mat1, mat2,results,dir):
     # Show second matrix
     ax2.imshow(mat2, cmap='gray', vmin=0, vmax=1)
     ax2.set_title("real")
-    plt.savefig(f"{dir}/prediction_dag.png")
+    plt.savefig(f"{dir_}")
     plt.show()
 
 if __name__ == '__main__':
@@ -217,7 +215,7 @@ if __name__ == '__main__':
         help='Path to the artifact for input data in Wandb')
     data.add_argument('--obs_scale', type=float, default=math.sqrt(0.1),
         help='Scale of the observation noise (default: %(default)s)')
-    data.add_argument('--num_samples', type=float, default=50000,
+    data.add_argument('--num_samples', type=float, default=5000,
         help='Number of samples in case we create a dataset (default: %(default)s)')
 
     # Model
@@ -248,7 +246,7 @@ if __name__ == '__main__':
     replay = parser.add_argument_group('Replay Buffer')
     replay.add_argument('--replay_capacity', type=int, default=100_000,
         help='Capacity of the replay buffer (default: %(default)s)')
-    replay.add_argument('--prefill', type=int, default=1000,
+    replay.add_argument('--prefill', type=int, default=100,
         help='Number of iterations with a random policy to prefill '
              'the replay buffer (default: %(default)s)')
     

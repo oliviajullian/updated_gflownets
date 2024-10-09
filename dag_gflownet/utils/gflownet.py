@@ -145,7 +145,7 @@ def posterior_estimate(
         dataset,
         num_samples=1000,
         num_samples_thetas=1,
-        verbose=True,
+        verbose=False,
         **kwargs
     ):
     """Get the posterior estimate of DAG-GFlowNet as a collection of graphs
@@ -220,3 +220,30 @@ def posterior_estimate(
         'scores': scores,
     }
     return ((orders >= 0).astype(np.int_), logs)
+
+
+def get_most_likely_graph(posterior_samples):
+    """
+    Get the most likely graph from the posterior samples.
+
+    Parameters
+    ----------
+    posterior_samples : np.ndarray
+        The posterior samples of adjacency matrices with shape (B, N, N).
+
+    Returns
+    -------
+    most_likely_graph : np.ndarray
+        An adjacency matrix representing the most likely graph.
+    """
+    # Number of samples and the number of variables
+    num_samples, num_variables, _ = posterior_samples.shape
+    
+    # Sum the adjacency matrices to count the presence of edges
+    edge_counts = np.sum(posterior_samples, axis=0)
+    
+    # Determine the presence of edges based on a threshold (e.g., > 50% presence)
+    threshold = num_samples / 2
+    most_likely_graph = (edge_counts >= threshold).astype(np.int_)
+
+    return most_likely_graph

@@ -2,7 +2,8 @@ import jax.numpy as jnp
 import optax
 import jax
 import gc
-
+import networkx as nx
+import matplotlib.pyplot as plt
 from functools import partial
 from collections import namedtuple
 from jax import grad, random, jit, tree_util, lax
@@ -11,10 +12,11 @@ from dag_gflownet.nets.gnn.gflownet import gflownet
 from dag_gflownet.utils.gflownet import uniform_log_policy, sub_trajectory_balance_loss
 from dag_gflownet.utils.jnp_utils import batch_random_choice
 
-
 DAGGFlowNetParameters = namedtuple('DAGGFlowNetParameters', ['online', 'target'])
 DAGGFlowNetState = namedtuple('DAGGFlowNetState', ['optimizer', 'key', 'steps'])
 GFNState = namedtuple('GFNState', ['thetas', 'log_pi', 'log_p_theta', 'scores', 'diffs'])
+
+
 
 
 class DAGGFlowNet:
